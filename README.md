@@ -1,3 +1,4 @@
+<script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=default"></script>
 # Sobel-Schneider Model
 
 Single layer model based on Sobel and Schneider 2009 and 2013. 
