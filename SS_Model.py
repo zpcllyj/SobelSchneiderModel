@@ -1,20 +1,14 @@
 """
-Python version of the S-S model.
-The S-S model is based on Sobel and Schneider 2009 and 2013 papers, please refer to the papers for more details.
-"""
-
-"""
 This file shows the python code for S-S model.
 """
 
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
 
 ## ----------------------------------------------
 # model configuration
-DT = 60 # satisfies CFL requirement if wind speed is not insanely large
-TOTAL_INTEGRATION_DAYS = 365*10 # integrate how many years
+DT = 30 # satisfies CFL requirement if wind speed is not insanely large
+TOTAL_INTEGRATION_DAYS = 365*15  # integrate how many years
 SAVEPATH="D:/SS_model_output/" # save path
 # ----------------------------------------------
 
@@ -31,6 +25,8 @@ GRAVITY=9.81
 HEIGHT=16e3
 TAU=37*24*3600
 Y_ONE=9439e3
+# Y_0=666e3
+Y_0=0
 V_D=2.5
 # ----------------------------------------------
 
@@ -51,9 +47,8 @@ time=np.zeros(TOTAL_INTEGRATION_DAYS)
 
 # Define the radiative-convective equilibrium (RCE) temperature θₑ
 theta_00=330
-THETA_E=np.where(np.abs(Y)<Y_ONE,theta_00-DELTA_Y*(Y/Y_ONE)**2,theta_00-DELTA_Y)
-# THETA_E=np.where(np.abs(Y)<Y_ONE,theta_00-DELTA_Y*(np.sin(0.5*np.pi*Y/Y_ONE)**2),theta_00-DELTA_Y)
-
+# THETA_E=np.where(np.abs(Y)<Y_ONE,theta_00-DELTA_Y*(Y/Y_ONE)**2,theta_00-DELTA_Y)
+THETA_E=np.where(np.abs(Y-Y_0)<Y_ONE,theta_00-DELTA_Y*(np.sin(0.5*np.pi*(Y-Y_0)/Y_ONE)**2),theta_00-DELTA_Y)
 # ----------------------------------------------
 
 
@@ -78,10 +73,16 @@ def get_T(theta):
 def get_dudt(u,v,theta):
     grad_u=np.gradient(u,DY)
     grad_v=np.gradient(v,DY)
-    diffusion_u=np.gradient(grad_u,DY)*K_V
-    s=V_D*np.heaviside(u, 0.5)*np.sign(Y)*grad_u
+    grad_u_advection_positive_v=np.zeros_like(u)
+    grad_u_advection_positive_v[1:]=(u[1:]-u[:-1])/DY
+    grad_u_advection_negative_v=np.zeros_like(u)
+    grad_u_advection_negative_v[:-1]=(u[1:]-u[:-1])/DY
+    grad_u_adv=np.where(v>0,grad_u_advection_positive_v,grad_u_advection_negative_v)
+    # s=V_D*np.heaviside(u, 0.5)*np.sign(Y)*grad_u
+    s=V_D*np.sign(Y-Y_0)*grad_u   #test S
+    # s=0
     f=u*EPSILON_U
-    dudt=v*(BETA*Y-grad_u)-u*grad_v*np.heaviside(grad_v, 0.5)-f-s+diffusion_u
+    dudt=v*(BETA*Y-grad_u_adv)-u*grad_v*np.heaviside(grad_v, 0.5)-f-s
     return dudt
 
 # Second PDE about v:
@@ -123,10 +124,6 @@ for i in range(total_time_steps):
 
     # Leap frog
 
-    if i%100==0:
-        v_thisstep[1:-1]=(v_thisstep[:-2]+v_thisstep[2:]+3*v_thisstep[1:-1])/5
-        u_thisstep[1:-1]=(u_thisstep[:-2]+u_thisstep[2:]+3*u_thisstep[1:-1])/5
-
     u_after=u_before+2*DT*get_dudt(u_thisstep,v_thisstep,theta_thisstep)
     v_after=v_before+2*DT*get_dvdt(u_thisstep,v_thisstep,theta_thisstep)
     theta_after=theta_before+2*DT*get_dthetadt(u_thisstep,v_thisstep,theta_thisstep)
@@ -152,7 +149,7 @@ for i in range(total_time_steps):
     u_temp[j-1]=u_thisstep
     v_temp[j-1]=v_thisstep
     theta_temp[j-1]=theta_thisstep
-    time_temp[j-1]=timestamp
+    time_temp[j-1]=timestamp/86400
 
     
     if (i+1)%int(86400/DT)==0:
@@ -170,46 +167,70 @@ for i in range(total_time_steps):
 
         print(f"Day {day} finished.")
 
+    if np.isnan(u_thisstep).any():
+        break
+
 u_xr = xr.DataArray(
-    data=u,
+    data=u[time!=0],
     dims=["time", "y"],
-    coords={"time": time, "y": Y},
+    coords={"time": time[time!=0], "y": Y},
     attrs=dict(
         units="m/s",
     ),
 )
 
 v_xr = xr.DataArray(
-    data=v,
+    data=v[time!=0],
     dims=["time", "y"],
-    coords={"time": time, "y": Y},
+    coords={"time": time[time!=0], "y": Y},
     attrs=dict(
         units="m/s",
     ),
 )
 
-t_xr = xr.DataArray(
-    data=time,
-    dims=["time"],
-    coords={"time": time},
+temp_xr = xr.DataArray(
+    data=theta[time!=0]/1.6,
+    dims=["time", "y"],
+    coords={"time": time[time!=0], "y": Y},
     attrs=dict(
-        units="seconds since 0000-01-01 00:00:00.0",
+        units="K",
+    ),
+)
+
+t_xr = xr.DataArray(
+    data=time[time!=0],
+    dims=["time"],
+    coords={"time": time[time!=0]},
+    attrs=dict(
+        units="days since 0000-01-01 00:00:00.0",
         calendar="noleap"
+    ),
+)
+
+thetae_xr = xr.DataArray(
+    data=THETA_E,
+    dims=["y"],
+    coords={"y": Y},
+    attrs=dict(
+        units="K",
     ),
 )
 
 ds=u_xr.to_dataset(name="u")
 ds['v']=v_xr
+ds['T']=temp_xr
+ds['theta_e']=thetae_xr
 ds['time']=t_xr
 
-ds.to_netcdf(SAVEPATH+"test.nc")
+ds.attrs['DELTA_Z']=DELTA_Z
+ds.attrs['DELTA_Y']=DELTA_Y
+ds.attrs['BETA']=BETA
+ds.attrs['K_V']=K_V
+ds.attrs['EPSILON_U']=EPSILON_U
+ds.attrs['DELTA']=DELTA
+ds.attrs['Y_ONE']=Y_ONE
+ds.attrs['Y_0']=Y_0
+ds.attrs['V_D']=V_D
 
-fig = plt.figure(figsize=[6,6],dpi=150)
-ax1=fig.add_subplot(1,1,1)
-ax1.plot(np.average(u[-10:],axis=0))
-plt.show()
 
-fig = plt.figure(figsize=[6,6],dpi=150)
-ax1=fig.add_subplot(1,1,1)
-ax1.plot(np.average(v[-10:],axis=0))
-plt.show()
+ds.to_netcdf(SAVEPATH+"output.nc")
