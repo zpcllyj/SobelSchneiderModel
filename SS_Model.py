@@ -56,19 +56,6 @@ THETA_E=np.where(np.abs(Y-Y_0)<Y_ONE,theta_00-DELTA_Y*(np.sin(0.5*np.pi*(Y-Y_0)/
 # Define necessary Functions
 # Heaviside function: np.heaviside(x1, x2), x2 could be 0.5, i.e., np.heaviside(x, 0.5)
 
-
-# Get potential temperature
-# According to the paper, the factor (pₛ/pₜ)^(R/cₚ) is 1.6
-def get_theta(T):
-    return 1.6*T
-
-
-def get_T(theta):
-    return theta/1.6
-
-# u_grad=np.gradient(theta[0],DY)
-
-
 # First PDE about u:
 def get_dudt(u,v,theta):
     grad_u=np.gradient(u,DY)
@@ -79,7 +66,7 @@ def get_dudt(u,v,theta):
     grad_u_advection_negative_v[:-1]=(u[1:]-u[:-1])/DY
     grad_u_adv=np.where(v>0,grad_u_advection_positive_v,grad_u_advection_negative_v)
     # s=V_D*np.heaviside(u, 0.5)*np.sign(Y)*grad_u
-    s=V_D*np.sign(Y-Y_0)*grad_u   #test S
+    s=V_D*np.sign(Y-Y_0)*grad_u
     # s=0
     f=u*EPSILON_U
     vt=u*grad_v*np.heaviside(THETA_E-theta, 0.5)
@@ -121,8 +108,6 @@ theta_temp=np.zeros([int(86400/DT),NY])
 time_temp=np.zeros(int(86400/DT))
 
 for i in range(total_time_steps):
-    
-
     # Leap frog
 
     u_after=u_before+2*DT*get_dudt(u_thisstep,v_thisstep,theta_thisstep)
