@@ -15,7 +15,7 @@ SAVEPATH="D:/SS_model_output/" # save path
 ## ----------------------------------------------
 # Define constants
 BETA=2e-11
-K_V=7786
+K_V=7786*100
 EPSILON_U=1e-8
 DELTA_Z=60
 DELTA_Y=50
@@ -82,7 +82,8 @@ def get_dudt(u,v,theta):
     s=V_D*np.sign(Y-Y_0)*grad_u   #test S
     # s=0
     f=u*EPSILON_U
-    dudt=v*(BETA*Y-grad_u_adv)-u*grad_v*np.heaviside(grad_v, 0.5)-f-s
+    vt=u*grad_v*np.heaviside(THETA_E-theta, 0.5)
+    dudt=v*(BETA*Y-grad_u_adv)-vt-f-s
     return dudt
 
 # Second PDE about v:
